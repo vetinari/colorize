@@ -1,0 +1,262 @@
+#!/usr/bin/perl -w
+#
+# colorize.pl - input colorizer ;-)
+#
+#
+
+=head1 NAME
+
+colorize - colorize lines from stdin
+
+=cut
+
+use v5.10.0; # needed for /p (i.e. ${^(PRE|POST)?MATCH})
+use Pod::Usage;
+use Term::ANSIColor qw/ colorvalid colored color /;
+use Getopt::Long;
+use IO::Handle;
+
+=head1 SYNOPSIS
+
+B<colorize.pl> --green INFO --yellow '\bWARN(ING)?\b' --red '(?^i:error)'
+                   --bold --blue DEBUG --reverse --default TRACE
+
+=head1 DESCRIPTION
+
+B<colorize> reads from stdin and applies ANSI color codes and attributes
+like I<reverse> or I<bold> to lines matching a given regular expression.
+
+Options are color names followed by a regular expression, attribute options
+and options to control case sensitivity or what to colorize.
+
+Each color option must follow a regex. If a line from stdin matches the
+regex, the line is printed in the colors and with the attributes given
+before the regex. The matching is done in the order given on the command
+line, at the first successful match the line from stdin will be colorized
+and printed to stdout.
+
+=head1 OPTIONS
+
+=head2 Attributes
+
+=over 4
+
+=item --bold | -B
+
+=item --dark | -D
+
+=item --blink
+
+=item --underline | -U
+
+=item --underscore
+
+=item --faint
+
+=item --reverse | -R
+
+=back
+
+=head2 Colors
+
+Known color names are
+
+=over 4
+
+=item black
+
+=item red
+
+=item green
+
+=item yellow
+
+=item blue
+
+=item magenta
+
+=item cyan
+
+=item white
+
+=back
+
+Color options are either I<--NAME> or I<--NAME1-on-NAME2> with the NAMEs
+being either one of the colors above or I<bright-NAME>.
+
+B<NOTE>: each color option B<must> have a regular expression as argument.
+
+To apply just attributes to a text matching a regular expression, use the
+special color
+
+=over 4
+
+=item --default
+
+=back
+
+=head2 Other options
+
+=over 4
+
+=item --flush | -F
+
+Immedeately flush buffers after writing one line
+
+=item --no-case-sense | -i
+
+Match case insensitive
+
+=item --match-only | -M
+
+Only apply the color and attribute options to that part of the line that
+matches the text.
+
+=item --all | -A
+
+Same as above, but the color is applied to all ocurrences in the line, not
+only the first
+
+=item --line | -L
+
+Color the full line, this is the default.
+
+=back
+
+=head1 EXAMPLE
+
+  colorize --reverse --match-only --default bar --red foo
+
+That would reverse the charachters 'bar' and make the full line red if it
+contains 'foo' (and not 'bar', which would match before).
+
+=head1 AUTHOR
+
+Hanno Hecker E<lt>vetinari@ankh-morp.orgE<gt>
+
+=cut
+
+my %color_opts = make_color_opts(
+                    qw/ black red green yellow
+                        blue magenta cyan white /
+                );
+
+my @attr_opts = qw/ bold dark blink underline underscore faint reverse /;
+
+my @options = ();
+my @attrs   = ();
+my $case_sense = 1;
+my $match_only = 0;
+my $match_all  = 0;
+
+$0 =~ s#.*/##;
+
+GetOptions(
+        # color options
+        %color_opts,
+        "default=s"       => \&add_option,
+        # attribute options
+        "bold|B"          => sub { push @attrs, shift },
+        "dark|D"          => sub { push @attrs, shift },
+        "blink"           => sub { push @attrs, shift },
+        "underline|U"     => sub { push @attrs, shift },
+        "underscore"      => sub { push @attrs, shift },
+        "faint"           => sub { push @attrs, shift },
+        "reverse|R"       => sub { push @attrs, shift },
+        # other stuff
+        "match-only|M"    => \$match_only,
+        "all|A"           => \$match_all,
+        "line|L"          => sub { $match_all = $match_only = 0; },
+        "no-case-sense|i" => sub { $case_sense = !pop },
+        "flush|F"         => sub { STDOUT->autoflush; },
+        "help|h"          => sub { pod2usage(-exitval => 0, -verbose => 2) },
+    ) or pod2usage(-exitval => 1, -verbose => 2);
+
+my ($pre, $match, $post);
+LINE:
+while (defined ($line = <STDIN>)) {
+    foreach my $entry (@options) {
+        next unless $line =~ $entry->{regex};
+        if ($entry->{match_only}) {
+            print ${^PREMATCH}, colorize($entry, ${^MATCH}), ${^POSTMATCH};
+        }
+        elsif ($entry->{match_all}) {
+            $line =~ s/(.*?)($entry->{regex})/$1.colorize($entry, $2)/ge;
+            print $line;
+        }
+        else {
+            print colorize($entry, $line);
+        }
+        next LINE;
+    }
+    print $line;
+}
+print color('reset');
+
+sub colorize {
+    my ($opts, $text) = @_;
+    return colored([@{$opts->{color}}, @{$opts->{attrs}}], $text);
+}
+
+sub check_color {
+    my $name  = shift;
+
+    if ($name) {
+        return 0 if $name eq 'default';
+
+        die "$0: invalid color '$name'...\n"
+            unless colorvalid($name);
+        return 1;
+    }
+    return 0;
+}
+
+sub compile_re {
+    my $re = shift;
+    my $cs = shift;
+    if ($cs) {
+        eval { $re = qr/$re/p; };
+    } else {
+        eval { $re = qr/$re/pi; };
+    }
+    die "$0: error in regex: $@\n"
+        if $@;
+    return $re;
+}
+
+sub parse_color {
+    my $color = shift;
+
+    $color =~ tr/-/_/;
+    $color =~ s/_?(on_.+)$//;
+    my ($fg, $bg) = ($color, $1);
+
+    my @out = ();
+    push @out, $fg if check_color($fg);
+    push @out, $bg if check_color($bg);
+    return @out;
+}
+
+sub make_color_opts {
+    my @names = map { ($_, "bright-$_") } @_;
+    my @all = ();
+    foreach my $c (@names) {
+        push @all, map { ("$_-on-$c", $c) } @names;
+    }
+    return map { ("$_=s", \&add_option) } @all;
+}
+
+sub add_option {
+    my ($option, $regex) = @_;
+    push @options, {
+            color => [parse_color($option)],
+            regex => compile_re($regex, $case_sense),
+            attrs => [@attrs],
+            match_only => $match_only,
+            match_all  => $match_all,
+        };
+    @attrs = ();
+    $match_only = 0;
+    $match_all  = 0;
+    $case_sense = 1;
+}

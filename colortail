@@ -1,0 +1,46 @@
+#!/bin/sh
+#
+#
+
+quote () { # escape any single quotes in an argument
+    echo "$1" | sed -e "s,','\\\\'',g"
+}
+
+usage () {
+    cat <<__END
+$0: Usage: $0 -f FILE COLORIZE_OPTS [-- TAIL_OPTS]
+$0 uses 'colorize' to color the output of tail -f
+__END
+}
+
+while  [ $# -gt 0 ]; do
+    case "$1" in
+        --)
+            shift
+            while [ $# -gt 0 ]; do
+                extra="${extra:+$extra }$(quote "$1")"
+                shift
+            done
+            ;;
+        -f)
+            shift
+            file="$1"
+            ;;
+        -h|-\?)
+                usage
+                exit 0
+            ;;
+        *)
+            saved="${saved:+$saved }'$(quote "$1")'"
+            shift
+        ;;
+    esac
+done
+if [ -z "$file" ]; then
+    echo "$0: missing -f FILE option" 1>&2
+    usage 1>&2
+    exit 1
+fi
+# restore command line up to --
+eval set -- "$saved"
+exec tail -f "$file" $extra | colorize -F "$@"

@@ -1,0 +1,46 @@
+#!/bin/sh
+#
+#
+
+quote () { # escape any single quotes in an argument
+    echo "$1" | sed -e "s,','\\\\'',g"
+}
+
+usage () {
+    cat <<__END
+$0: Usage: $0 [-f FILE] COLORIZE_OPTS [-- LESS_OPTS] 
+$0 uses 'colorize' to color FILE (or stdin) and display it in less(1).
+__END
+}
+
+while  [ $# -gt 0 ]; do
+    case "$1" in
+        --)
+            shift
+            while [ $# -gt 0 ]; do
+                extra="${extra:+$extra }$(quote "$1")"
+                shift
+            done
+            ;;
+        -f)
+            shift
+            file="$1"
+            ;;
+        -h|-\?)
+                usage
+                exit 0
+            ;;
+        *)
+            saved="${saved:+$saved }'$(quote "$1")'"
+            shift
+        ;;
+    esac
+done
+
+# restore command line up to --
+eval set -- "$saved"
+if [ -z "$file" -o "$file" = "-" ]; then
+    exec colorize "$@" | less -R $extra
+else
+    exec colorize "$@" < "$file" | less -R $extra
+fi
