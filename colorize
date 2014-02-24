@@ -15,6 +15,7 @@ use Pod::Usage;
 use Term::ANSIColor qw/ colorvalid colored color /;
 use Getopt::Long;
 use IO::Handle;
+use Config::IniFiles;
 
 =head1 SYNOPSIS
 
@@ -121,6 +122,28 @@ only the first
 
 Color the full line, this is the default.
 
+=item --config | -C SECTION
+
+Read the options from ~/.colorize.ini's section SECTION. All keys are names
+from command line options without the leading C<-->. Example config:
+
+ [diff]
+ red = ^-
+ green = ^\+
+ yellow = ^@
+
+Use with C<colorize -C diff> and pipe a diff output to this...
+
+=back
+
+=head1 FILES
+
+=over 4
+
+=item ~/.colorize.ini
+
+INI style file with options
+
 =back
 
 =head1 EXAMPLE
@@ -150,8 +173,7 @@ my $match_only = 0;
 my $match_all  = 0;
 
 $0 =~ s#.*/##;
-
-GetOptions(
+my %options = (
         # color options
         %color_opts,
         "default=s"       => \&add_option,
@@ -164,13 +186,16 @@ GetOptions(
         "faint"           => sub { push @attrs, shift },
         "reverse|R"       => sub { push @attrs, shift },
         # other stuff
+        "config|C=s"      => \&read_config,
         "match-only|M"    => \$match_only,
         "all|A"           => \$match_all,
         "line|L"          => sub { $match_all = $match_only = 0; },
         "no-case-sense|i" => sub { $case_sense = !pop },
         "flush|F"         => sub { STDOUT->autoflush; },
         "help|h"          => sub { pod2usage(-exitval => 0, -verbose => 2) },
-    ) or pod2usage(-exitval => 1, -verbose => 2);
+    );
+
+GetOptions(%options) or pod2usage(-exitval => 1, -verbose => 2);
 
 my ($pre, $match, $post);
 LINE:
@@ -196,6 +221,26 @@ print color('reset');
 sub colorize {
     my ($opts, $text) = @_;
     return colored([@{$opts->{color}}, @{$opts->{attrs}}], $text);
+}
+
+sub read_config {
+    my $section = pop;
+    die "$0: Failed to open ~/.colorize.ini: $!\n"
+        unless open CONF, $ENV{HOME}."/.colorize.ini";
+    my $cfg = Config::IniFiles->new( -file => *CONF );
+    die "$0: config section $section does not exist...\n"
+        unless $cfg->SectionExists($section);
+    my %keys = map { my $k = $_; $k =~ s/[|=].*$//; ($k, $_); } keys %options;
+    foreach my $key (keys %keys) {
+        if ($cfg->exists($section, $key)) {
+            if ($keys{$key} =~ /=s$/) {
+                $options{$keys{$key}}->($key, $cfg->val($section, $key));
+            }
+            elsif ($cfg->val($section, $key)){
+                $options{$keys{$key}}->($key);
+            }
+        }
+    }
 }
 
 sub check_color {
