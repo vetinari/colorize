@@ -231,14 +231,12 @@ sub read_config {
     die "$0: config section $section does not exist...\n"
         unless $cfg->SectionExists($section);
     my %keys = map { my $k = $_; $k =~ s/[|=].*$//; ($k, $_); } keys %options;
-    foreach my $key (keys %keys) {
-        if ($cfg->exists($section, $key)) {
-            if ($keys{$key} =~ /=s$/) {
-                $options{$keys{$key}}->($key, $cfg->val($section, $key));
-            }
-            elsif ($cfg->val($section, $key)){
-                $options{$keys{$key}}->($key);
-            }
+    foreach my $key ($cfg->Parameters($section)) {
+        if ($keys{$key} =~ /=s$/) {
+            $options{$keys{$key}}->($key, $cfg->val($section, $key));
+        }
+        elsif ($cfg->val($section, $key)){
+            $options{$keys{$key}}->($key);
         }
     }
 }
