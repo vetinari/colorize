@@ -1,4 +1,4 @@
-#!/usr/bin/perl -w
+#!/usr/bin/perl
 #
 # colorize.pl - input colorizer ;-)
 #
@@ -10,6 +10,8 @@ colorize - colorize lines from stdin
 
 =cut
 
+use strict;
+use warnings;
 use v5.10.0; # needed for /p (i.e. ${^(PRE|POST)?MATCH})
 use Pod::Usage;
 use Term::ANSIColor qw/ colorvalid colored color /;
@@ -133,6 +135,7 @@ from command line options without the leading C<-->. Example config:
  yellow = ^@
 
 Use with C<colorize -C diff> and pipe a diff output to this...
+B<Note>: trailing whitespace in a line is not stripped
 
 =back
 
@@ -199,7 +202,7 @@ GetOptions(%options) or pod2usage(-exitval => 1, -verbose => 2);
 
 my ($pre, $match, $post);
 LINE:
-while (defined ($line = <STDIN>)) {
+while (defined (my $line = <STDIN>)) {
     foreach my $entry (@options) {
         next unless $line =~ $entry->{regex};
         if ($entry->{match_only}) {
