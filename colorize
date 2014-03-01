@@ -124,6 +124,10 @@ only the first. This is the default.
 
 Color the full line.
 
+=item --config-file | -f FILE
+
+Use config file FILE instead of ~/.colorize.ini
+
 =item --config | -C SECTION
 
 Read the options from ~/.colorize.ini's section SECTION. All keys are names
@@ -176,6 +180,7 @@ my @attrs   = ();
 my $case_sense = 1;
 my $match_only = 0;
 my $match_all  = 1;
+my $config_file = $ENV{HOME}.'/.colorize.ini';
 
 $0 =~ s#.*/##;
 my %options = (
@@ -192,6 +197,7 @@ my %options = (
         "reverse|R"       => sub { push @attrs, shift },
         # other stuff
         "config|C=s"      => \&read_config,
+        "config-file|f=s" => \$config_file,
         "match-only|M"    => sub { $match_only = 1; $match_all = 0; },
         "all|A"           => sub { $match_only = 0; $match_all = 1; },
         "line|L"          => sub { $match_only = 0; $match_all = 0; },
@@ -230,8 +236,8 @@ sub colorize {
 
 sub read_config {
     my $section = pop;
-    die "$0: Failed to open ~/.colorize.ini: $!\n"
-        unless open CONF, $ENV{HOME}."/.colorize.ini";
+    die "$0: Failed to open $config_file: $!\n"
+        unless open CONF, $config_file;
     my $cfg = Config::IniFiles->new( -file => *CONF );
     die "$0: config section $section does not exist...\n"
         unless $cfg->SectionExists($section);

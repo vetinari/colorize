@@ -74,11 +74,15 @@ matches the text.
 - \--all | -A
 
 Same as above, but the color is applied to all ocurrences in the line, not
-only the first
+only the first. This is the default.
 
 - \--line | -L
 
-Color the full line, this is the default.
+Color the full line.
+
+- \--config-file | -f FILE
+
+Use config file FILE instead of ~/.colorize.ini
 
 - \--config | -C SECTION
 
@@ -86,11 +90,14 @@ Read the options from ~/.colorize.ini's section SECTION. All keys are names
 from command line options without the leading `--`. Example config:
 
     [diff]
-    red = ^-
-    green = ^\+
-    yellow = ^@
+    line    = 1
+    red     = ^\-
+    green   = ^\+
+    yellow  = ^@
+    magenta = ^\S+
 
 Use with `colorize -C diff` and pipe a diff output to this...
+__Note__: trailing whitespace in a line is not stripped
 
 # FILES
 
