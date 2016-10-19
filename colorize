@@ -58,6 +58,7 @@ and printed to stdout.
 
 =item --reverse | -R
 
+
 =back
 
 =head2 Colors
@@ -95,6 +96,14 @@ special color
 =over 4
 
 =item --default
+
+=back
+
+To skip lines being prited at all, use
+
+=over 4
+
+=item --skip REGEX
 
 =back
 
@@ -181,12 +190,14 @@ my $case_sense = 1;
 my $match_only = 0;
 my $match_all  = 1;
 my $config_file = $ENV{HOME}.'/.colorize.ini';
+my $continue = 0;
 
 $0 =~ s#.*/##;
 my %options = (
         # color options
         %color_opts,
         "default=s"       => \&add_option,
+        "skip=s"          => \&add_option,
         # attribute options
         "bold|B"          => sub { push @attrs, shift },
         "dark|D"          => sub { push @attrs, shift },
@@ -201,29 +212,33 @@ my %options = (
         "match-only|M"    => sub { $match_only = 1; $match_all = 0; },
         "all|A"           => sub { $match_only = 0; $match_all = 1; },
         "line|L"          => sub { $match_only = 0; $match_all = 0; },
+        "continue"        => sub { $match_only = 1; $match_all = 0; $continue = 1; },
         "no-case-sense|i" => sub { $case_sense = !pop },
         "flush|F"         => sub { STDOUT->autoflush; },
         "help|h"          => sub { pod2usage(-exitval => 0, -verbose => 2) },
     );
 
 GetOptions(%options) or pod2usage(-exitval => 1, -verbose => 2);
+$SIG{INT} = $SIG{TERM} = sub { print color("reset"); exit 1 };
 
 my ($pre, $match, $post);
 LINE:
 while (defined (my $line = <STDIN>)) {
     foreach my $entry (@options) {
         next unless $line =~ $entry->{regex};
+        next LINE if $entry->{skip};
         if ($entry->{match_only}) {
-            print ${^PREMATCH}, colorize($entry, ${^MATCH}), ${^POSTMATCH};
+            $line = ${^PREMATCH} . colorize($entry, ${^MATCH}) . ${^POSTMATCH};
+            if ($continue) {
+                next;
+            }
         }
         elsif ($entry->{match_all}) {
             $line =~ s/(.*?)($entry->{regex})/$1.colorize($entry, $2)/ge;
-            print $line;
         }
         else {
-            print colorize($entry, $line);
+            $line = colorize($entry, $line);
         }
-        next LINE;
     }
     print $line;
 }
@@ -231,7 +246,7 @@ print color('reset');
 
 sub colorize {
     my ($opts, $text) = @_;
-    return colored([@{$opts->{color}}, @{$opts->{attrs}}], $text);
+    return colored([@{$opts->{color}}, @{$opts->{attrs}}], $text).color('reset');
 }
 
 sub read_config {
@@ -280,7 +295,9 @@ sub compile_re {
 
 sub parse_color {
     my $color = shift;
-
+    if ($color eq "skip") {
+        return ("skip");
+    }
     $color =~ tr/-/_/;
     $color =~ s/_?(on_.+)$//;
     my ($fg, $bg) = ($color, $1);
@@ -302,12 +319,19 @@ sub make_color_opts {
 
 sub add_option {
     my ($option, $regex) = @_;
+    my @color = parse_color($option);
+    my $skip = undef;
+    if ($color[0] eq "skip") {
+        $skip = 1;
+        @color = ();
+    }
     push @options, {
-            color => [parse_color($option)],
+            color => [@color],
             regex => compile_re($regex, $case_sense),
             attrs => [@attrs],
             match_only => $match_only,
             match_all  => $match_all,
+            skip  => $skip,
         };
     @attrs = ();
     $match_only = 0;
